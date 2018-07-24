@@ -231,7 +231,7 @@
                     channel.onopen = () => {
                         if (this.toUser.length == 0) return
                         this.sendProgress = 0; this.recvProgress = 0;
-                        const BYTES_PER_CHUNK = 10240 * 2;
+                        const BYTES_PER_CHUNK = 10240;
                         var file = document.getElementById('file-' + this.toUser).files[0];
                         var currentChunk = 0;
                         var fileReader = new FileReader();
