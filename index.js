@@ -56,6 +56,8 @@ function sendRoomUsers(room) {
         }
     })
     wss.clients.forEach((client) => {
-        client.send(JSON.stringify({ roomUsers: roomUsers }))
+        if (client.protocol.split('.')[0] == room) {
+            client.send(JSON.stringify({ roomUsers: roomUsers }))
+        }
     });
 }
