@@ -249,7 +249,8 @@
                             console.log('send size:' + fileReader.result.length)
                             channel.send( fileReader.result );
                             currentChunk++;
-                            this.sendProgress = ((BYTES_PER_CHUNK * currentChunk / file.size ) * 100).toFixed( 0 )
+                            let p = ((BYTES_PER_CHUNK * currentChunk / file.size ) * 100).toFixed( 0 )
+                            this.sendProgress = (p > 100 ? 100 : p)
                             if ( BYTES_PER_CHUNK * currentChunk < file.size ) {
                                 readNextChunk();
                             }
