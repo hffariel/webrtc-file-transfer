@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="cleartype" content="on">
+        <meta name="viewport" content="width=500,user-scalable=no">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black">
+        <meta name="apple-mobile-web-app-title" content="webrtc">
+        <title>webrtc</title>
+        <link href='https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Material+Icons' rel="stylesheet">
+        <link href="https://cdn.jsdelivr.net/npm/vuetify/dist/vuetify.min.css" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/vue/dist/vue.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/vuetify/dist/vuetify.js"></script>
+    </head>
+    <body style="background: #f5f5f5; overflow-y: hidden;">
+        <div id="connect">
+            <div v-if="roomUsers.length == 0">
+                    <v-form>
+                <v-container>
+                    <v-layout row wrap>
+                        <v-flex xs12 sm6 md3>
+                            <v-text-field
+                                style="background: white" 
+                                v-model="roomName"
+                                label="房间名称"
+                                placeholder="房间名称"
+                                solo
+                            ></v-text-field>
+                        </v-flex>
+                        <v-flex xs12 sm6 md3>
+                            <v-text-field
+                                style="background: white" 
+                                v-model="userName"
+                                label="用户名称"
+                                placeholder="用户名称"
+                                solo
+                            ></v-text-field>
+                        </v-flex>
+                        <v-btn @click="connectRoom()" style="background: purple" color="info">加入</v-btn>
+                    </v-layout>
+                </v-container>
+                </v-form>
+            </div>
+            <div v-else>
+                <h4>房间:{{roomName}}&nbsp;&nbsp;&nbsp;&nbsp;我:{{userName}}</h4>
+                <h5 v-if="sendProgress > 0 || recvProgress > 0">状态：{{sendProgress > 0 ? '发送进度：' + sendProgress + '%' : '接收进度：' + recvProgress + '%'}}</h5>
+                <div v-for="user,index in roomUsers" :key="index">
+                    <input :ref="'file-' + user" v-if="user != userName" type="file"/>
+                    <v-btn v-if="user != userName" @click="setLocalDescription(user)" style="background: purple" color="info">发送->{{user}}</v-btn>
+                </div>
+            </div>
+            
+        </div>
+    </body>
+    <script>
+        // ice configurations
+        var iceConfig = {
+            iceServers: [
+                {
+                    url: "turn:67.216.222.150:3478?transport=tcp",  
+                    credential: "farielclaire", 
+                    username: "fariel"
+                }
+            ],
+            peerConnectionConstraints: {
+                optional: [
+                    {"DtlsSrtpKeyAgreement": false}
+                ]
+            }
+        }
+        const offerOptions = {
+            offerToReceiveAudio: 1,
+            offerToReceiveVideo: 1
+        }
+        // sinaling configurations
+        const WS_URL = 'ws://172.19.128.127:3000'
+
+
+        var webrtcEle = new Vue({
+            el: '#connect',
+            data: {
+                sendProgress: 0, recvProgress: 0, websocket: {}, localPeerConnection: {}, dataChannel: {}, roomName: getCookie('roomName'), userName: getCookie('userName'), toUser: '', roomUsers: []
+            },
+            methods: {
+                setLocalDescription(user) {
+                    this.toUser = user
+                    this.initPeerConnection()
+                    this.setChannelEvents(this.localPeerConnection.createDataChannel('channel', {reliable: true}));
+                    // exchange icecandinates
+                    this.localPeerConnection.createOffer().then((description) => {
+                        description.sdp.replace( 'b=AS:30', 'b=AS:1638400' )
+                        this.localPeerConnection.setLocalDescription(description, () => {
+                            // // after this function returns, pc1 will start firing icecandidate events
+                            this.websocket.send(JSON.stringify({to: this.toUser, from: this.userName, description: description}))
+                        }, (err) => {
+                            window.alert(err.message);
+                        });
+                    }).catch((err) => {
+                        window.alert(err.message);
+                    });
+                    this.localPeerConnection.onnegotiationneeded = () => {
+                        console.log('negotiated')
+                    }
+                },
+                setRemoteSDP(fromUser, desc) {
+                    this.localPeerConnection.setRemoteDescription(new RTCSessionDescription(desc), () => {
+                        // response answer
+                        if (this.localPeerConnection.remoteDescription.type == "offer") {
+                            this.localPeerConnection.createAnswer((desc) => {
+                                desc.sdp.replace( 'b=AS:30', 'b=AS:1638400' )
+                                this.localPeerConnection.setLocalDescription(desc, () => {
+                                    this.websocket.send(JSON.stringify({to: fromUser, from: this.userName, description: desc }));
+                                }, (err) => window.alert(err));
+                            }, (err) => window.alert(err));
+                        }
+                    }, (err) => window.alert(err));
+                },
+                connectRoom() {
+                    if (this.roomName.length == 0) window.alert('请输入房间名')
+                    if (this.userName.length == 0) window.alert('请输入用户名')
+                    setCookie("roomName", this.roomName)
+                    setCookie("userName", this.userName)
+                    // connect the sinaling server
+                    this.websocket = new WebSocket(WS_URL, [this.roomName, this.userName].join('.'));
+                    this.websocket.onopen = (evt) => {
+                        console.log("websocket connected")
+                    }
+                    this.websocket.onclose = () => window.location.reload(true);
+                    this.websocket.onerror = (evt) => window.alert('加入失败，存在重复的用户名或者网络连接有问题');
+                    this.websocket.onmessage = (evt) => {
+                        console.log(evt)
+                        let json = JSON.parse(evt.data)
+                        if (json.roomUsers) {
+                            this.roomUsers = json.roomUsers
+                        }
+                        if (json.candidate) {
+                            this.localPeerConnection.addIceCandidate(new RTCIceCandidate(json.candidate));
+                        }
+                        if (json.description) {
+                            if (json.description.type == 'offer')  {
+                                this.initPeerConnection()
+                                this.localPeerConnection.ondatachannel = (event) => {
+                                    answererDataChannel = event.channel;
+                                    this.setChannelEvents(answererDataChannel);
+                                }
+                            }
+                            this.setRemoteSDP(json.from, json.description)
+                        }
+                    }
+                },
+                initPeerConnection() {
+                    this.localPeerConnection = new RTCPeerConnection(iceConfig);
+                    this.localPeerConnection.oniceconnectionstatechange = e => console.log(this.localPeerConnection.iceConnectionState);
+                    this.localPeerConnection.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            this.websocket.send(JSON.stringify({to: this.toUser, from: this.userName, candidate: event.candidate}))
+                        }
+                    }
+                },
+                setChannelEvents(channel) {
+                    var incomingFileInfo;
+                    var incomingFileData;
+                    var bytesReceived;
+                    var downloadInProgress = false;
+                    let startDownload = ( data ) => {
+                        incomingFileInfo = JSON.parse( data.toString() );
+                        incomingFileData = [];
+                        bytesReceived = 0;
+                        downloadInProgress = true;
+                        console.log( 'incoming file <b>' + incomingFileInfo.fileName + '</b> of ' + incomingFileInfo.fileSize + ' bytes' );
+                    }
+                    let progressDownload = ( data ) => {
+                        bytesReceived += data.byteLength;
+                        incomingFileData.push( data );
+                        this.recvProgress = ((bytesReceived / incomingFileInfo.fileSize ) * 100).toFixed( 1 )
+                        console.log(this.recvProgress)
+                        if( bytesReceived === incomingFileInfo.fileSize ) {
+                            endDownload();
+                        }
+                    }
+                    let endDownload = () => {
+                        downloadInProgress = false;
+                        var blob = new window.Blob( incomingFileData );
+                        var anchor = document.createElement( 'a' );
+                        anchor.href = URL.createObjectURL( blob );
+                        anchor.download = incomingFileInfo.fileName;
+                        anchor.textContent = 'XXXXXXX';
+
+                        if( anchor.click ) {
+                            anchor.click();
+                        } else {
+                            var evt = document.createEvent( 'MouseEvents' );
+                            evt.initMouseEvent( 'click', true, true, window, 0, 0, 0, 0, 0, false, false, false, false, 0, null );
+                            anchor.dispatchEvent( evt );
+                        }
+                    }
+                    channel.onmessage = (event) => {
+                        if( downloadInProgress === false && event.data.indexOf('fileName') >= 0) {
+                            this.sendProgress = 0; this.recvProgress = 0;
+                            startDownload( event.data );
+                        } else {
+                            progressDownload( event.data );
+                        }
+                    };
+                    channel.onopen = () => {
+                        if (this.toUser.length == 0) return
+                        this.sendProgress = 0; this.recvProgress = 0;
+                        const BYTES_PER_CHUNK = 32576 * 3;
+                        var file = this.$refs['file-' + this.toUser][0].files[0];
+                        var currentChunk = 0;
+                        var fileReader = new FileReader();
+                        readNextChunk();
+                        channel.send(JSON.stringify({
+                            fileName: file.name,
+                            fileSize: file.size
+                        }));
+                        function readNextChunk() {
+                            var start = BYTES_PER_CHUNK * currentChunk;
+                            var end = Math.min( file.size, start + BYTES_PER_CHUNK );
+                            fileReader.readAsArrayBuffer( file.slice( start, end ) );
+                        }
+                        fileReader.onload = () => {
+                            console.log('send size:' + fileReader.result.length)
+                            channel.send( fileReader.result );
+                            currentChunk++;
+                            this.sendProgress = ((BYTES_PER_CHUNK * currentChunk / file.size ) * 100).toFixed( 0 )
+                            if ( BYTES_PER_CHUNK * currentChunk < file.size ) {
+                                readNextChunk();
+                            }
+                        };
+                        this.toUser = ''
+                    };
+                }
+            }
+        });
+        function setCookie(name, value) {
+            var exp = new Date(new Date().getTime());
+            exp.setTime(exp.getTime() + 30 * 24 * 3600 * 1000);
+            document.cookie = name + "="+ escape (value) + ";expires=" + exp.toGMTString()+"; path=/";
+        }
+        function getCookie(name) {
+            var arr,reg=new RegExp("(^| )"+name+"=([^;]*)(;|$)");
+            if(arr=document.cookie.match(reg))
+                return unescape(arr[2]);
+            else
+                return '';
+        }
+    </script>
+</html>
