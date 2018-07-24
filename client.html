@@ -231,7 +231,7 @@
                     channel.onopen = () => {
                         if (this.toUser.length == 0) return
                         this.sendProgress = 0; this.recvProgress = 0;
-                        const BYTES_PER_CHUNK = 32576 * 3;
+                        const BYTES_PER_CHUNK = 32576;
                         var file = document.getElementById('file-' + this.toUser).files[0];
                         var currentChunk = 0;
                         var fileReader = new FileReader();
@@ -246,7 +246,6 @@
                             fileReader.readAsArrayBuffer( file.slice( start, end ) );
                         }
                         fileReader.onload = () => {
-                            console.log('send size:' + fileReader.result.length)
                             channel.send( fileReader.result );
                             currentChunk++;
                             let p = ((BYTES_PER_CHUNK * currentChunk / file.size ) * 100).toFixed( 0 )
