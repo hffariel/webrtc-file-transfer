@@ -111,7 +111,7 @@
                 setLocalDescription(user) {
                     this.toUser = user
                     this.initPeerConnection()
-                    this.setChannelEvents(this.localPeerConnection.createDataChannel('channel', {reliable: true}));
+                    this.setChannelEvents(this.localPeerConnection.createDataChannel('channel', {maxRetransmits: 10, ordered: true}));
                     // exchange icecandinates
                     this.localPeerConnection.createOffer().then((description) => {
                         description.sdp.replace( 'b=AS:30', 'b=AS:1638400' )
@@ -231,7 +231,7 @@
                     channel.onopen = () => {
                         if (this.toUser.length == 0) return
                         this.sendProgress = 0; this.recvProgress = 0;
-                        const BYTES_PER_CHUNK = 32576 / 2;
+                        const BYTES_PER_CHUNK = 10240 * 2;
                         var file = document.getElementById('file-' + this.toUser).files[0];
                         var currentChunk = 0;
                         var fileReader = new FileReader();
