@@ -1,7 +1,7 @@
 var WebSocket = require('ws');
 
 var wss = new WebSocket.Server({
-    port: 3000,
+    port: 80,
     verifyClient: (a, cb) => {
         let authInfo = a.req.headers['sec-websocket-protocol'];
         let couldConnect = true
